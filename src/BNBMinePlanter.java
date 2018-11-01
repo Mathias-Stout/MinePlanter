@@ -1,3 +1,4 @@
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -7,9 +8,9 @@ public class BNBMinePlanter implements MinePlanter {
 
     private int currentMines, bestMines;
 
-    //alle vrije locaties (i,j)
-    boolean[][] free;
-    int numFree;
+
+    //lege posities
+    List<Pair> empties;
 
     @Override
     public Sign[][] plant(int rows, int cols, Sign[][] field) {
@@ -22,50 +23,54 @@ public class BNBMinePlanter implements MinePlanter {
         currentMines = 0;
         bestMines = 0;
 
-        free = new boolean[field.length][field[0].length];
+        empties = new ArrayList<>();
         for (int i = 0; i < field.length; i++) {
             for (int j = 0; j < field[i].length; j++) {
-                if (canPlace(i, j)) {
-                    addFree(i, j);
+                if (field[i][j].isEmpty()) {
+                    empties.add(p(i, j));
                 }
             }
         }
 
         //probleem recursief oplossen
-        plant(0, 0);
+        plant(0);
 
-        //we zetten onze oplossing om naar de juiste vorm: we zetten de vlagjes die we aanpasten terug naar hun oorspronkelijke waarde
+        //we zetten onze oplossing om naar de juiste vorm:
+        //we zetten de vlagjes die we aanpasten terug naar hun oorspronkelijke waarde
+        Sign[][] result = new Sign[field.length][field[0].length];
         for (int i = 0; i < field.length; i++) {
             for (int j = 0; j < field[i].length; j++) {
-                if (best[i][j].isBound()) {
-                    best[i][j] = field[i][j].copy();
+                if (field[i][j].isBound()) {
+                    result[i][j] = field[i][j].copy();
+                }else{
+                    result[i][j] = best[i][j].copy();
                 }
             }
         }
-        return best;
+        return result;
     }
 
-    private void plant(int i, int j) {
-        //geval 1: we zijn alle rijen afgegaan en hebben dus een oplossing
-        if (i >= current.length) {
+    private void plant(int l) {
+        //geval 1: we zijn alle lege vakjes afgegaan, en hebben dus een (al dan niet optimale) oplossing gevonden
+        if (l >= empties.size()) {
             if (currentMines > bestMines) {
                 copyField(current, best);
                 bestMines = currentMines;
             }
-            //geval 2: we zijn nog niet alle rijen afgegaan
-        } else if(currentMines + numRemainingPos(i,j) > bestMines) {
+            //geval 2: we zijn nog niet alle lege vakjes afgegaan, en we kunnen misschien nog beter doen dan de huidige oplossing
+        } else if(currentMines + (empties.size() - l) > bestMines ) {
             //recursief verder uitwerken, met eerst de berekening van welk vakje we na (i,j) zullen behandelen
-            int k = nextI(i, j);
-            int l = nextJ(i, j);
+            int i = empties.get(l).getI();
+            int j = empties.get(l).getJ();
 
             //probeer een mijn te leggen op positie i,j
-            if (free[i][j]) {
+            if (canPlace(i,j)) {
                 placeMine(i, j);
                 currentMines++;
 
 
                 //recursie
-                plant(k, l);
+                plant(l + 1);
 
                 //hersteloperatie
                 removeMine(i, j);
@@ -73,24 +78,10 @@ public class BNBMinePlanter implements MinePlanter {
 
             }
             //recursief verder werken zonder mijn op positie i,j
-            plant(k, l);
+            plant(l +1);
         }
     }
 
-    //hulpmethodes om te bepalen welk vaje we als volgende zullen behandelen
-    private int nextI(int i, int j) {
-        if (j + 1 >= current[i].length)
-            return i + 1;
-        else
-            return i;
-    }
-
-    private int nextJ(int i, int j) {
-        if (j + 1 >= current[i].length)
-            return 0;
-        else
-            return j+1;
-    }
 
 
     //plaats bom op positie i,j in een gegeven partiële oplossinge en pas omliggende vlaggen aan
@@ -106,8 +97,6 @@ public class BNBMinePlanter implements MinePlanter {
                 }
             }
         }
-        updateFree(i,j);
-
     }
 
     //we roepen deze methode alleen op wanneer er effectief een mijn ligt op positie i,j
@@ -121,7 +110,6 @@ public class BNBMinePlanter implements MinePlanter {
                 }
             }
         }
-        updateFree(i,j);
     }
 
     private boolean canPlace(int i, int j) {
@@ -144,38 +132,6 @@ public class BNBMinePlanter implements MinePlanter {
         return 0 <= i && i < current.length && 0 <= j && j < current[i].length;
     }
 
-    //wanneer we een bom zetten of verwijderen, dan
-    // 1) de locatie van de bom is nu wel vrij/niet meer vrij
-    // 2) wanneer een vlagje van 0 naar 1 gaat, dan moeten eventueel een aantal plaatsen worden vrijgegeven
-    // 3) wanneer een vlagje van 1 naar 0 gaat, dan zijn er een aantal plaatsen waar vanaf dan geen bom meer mag geleged worden
-
-    private void addFree(int i, int j) {
-        if (inField(i,j) && !free[i][j]){
-            free[i][j] = true;
-            numFree++;
-        }
-
-    }
-
-    private void rmFree(int i, int j) {
-        if (inField(i,j) && free[i][j]){
-            free[i][j] = false;
-            numFree--;
-        }
-    }
-
-    //als we iets veranderen aan een positie, update vrije posities in een 5*5 vierkant errond
-    private void updateFree(int i, int j) {
-        for (int k = -2; k <= 2; k++) {
-            for (int l = -2; l <= 2; l++) {
-                if (canPlace(i + k, l + j)) {
-                    addFree(i + k, l + j);
-                }else{
-                    rmFree(i+k,l+j);
-                }
-            }
-        }
-    }
 
     private void copyField(Sign[][] origin, Sign[][] dest) {
         for (int i = 0; i < origin.length && i < dest.length; i++) {
@@ -191,19 +147,28 @@ public class BNBMinePlanter implements MinePlanter {
         return current[i].length - j + (current.length - (i+1)) * current[i].length;
     }
 
-    //een eerste bound
-    //we kunnen nooit beter doen dan op alle nog vrije plaatsen een bom leggen
-    private int numFreeFields(){
-        return numFree;
-//        int numFree = 0;
-//        for (int i = 0; i < current.length; i++) {
-//            for (int j = 0; j < current[i].length; j++) {
-//                if (canPlace(i, j)) {
-//                    numFree++;
-//                }
-//            }
-//        }
-//        return numFree;
+
+    //hulpklasse voor coordinaten
+    private class Pair{
+        int i;
+        int j;
+
+        public Pair(int i, int j) {
+            this.i = i;
+            this.j = j;
+        }
+
+        public int getI() {
+            return i;
+        }
+
+        public int getJ() {
+            return j;
+        }
     }
 
+    //hulpmethode om gemakkelijker pairs te creeren
+    private Pair p(int i, int j) {
+        return new Pair(i, j);
+    }
 }
